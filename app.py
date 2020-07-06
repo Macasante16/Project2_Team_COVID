@@ -3,16 +3,14 @@ import sqlite3
 import os
 import io
 import csv
-import pandas as pd
-import numpy as np
 import json
-import matplotlib.pyplot as plt
 from flask import Flask, render_template, redirect, Response, request, jsonify, json, make_response
 from flask_caching import Cache
 from flask_sqlalchemy import SQLAlchemy
-import random
-from matplotlib.backends.backend_agg import FigureCanvasAgg
-from matplotlib.backends.backend_svg import FigureCanvasSVG
+from splinter import Browser
+import requests
+from bs4 import BeautifulSoup
+
 
 #################################################
 # Flask Setup
@@ -56,7 +54,7 @@ def setup_SQLitedb():
 
 
 #################################################
-# QueryBuilder
+# Query Builder
 #################################################
 def queryBuilder(startdate, enddate, uscounty, usstate):
     #flags used to write SQL query
@@ -127,9 +125,8 @@ def buildJsonFile(query):
             sqliteConnection.close()
 
 #################################################
-# Table Builder
+# Table Data Builder
 #################################################
-
 
 def readSqliteTable(query):
     try:
@@ -146,14 +143,31 @@ def readSqliteTable(query):
         if (sqliteConnection):
             sqliteConnection.close()
 
+#################################################
+# Web scrapper
+#################################################
+def covid_stat_Scrapper(): 
 
+    wikiInfo = 'https://www.worldometers.info/coronavirus/country/us/'
+    html_content = requests.get(wikiInfo).text
+    
+    # Create BeautifulSoup object; parse with 'lxml'
+    soup = BeautifulSoup(html_content, 'lxml')
+    data = []
+    covid_table = soup.findAll("div", attrs={"id": "maincounter-wrap"})
+    for tag in covid_table:
+        if(tag.get_text() !=""):
+            data.append(tag.get_text().strip('\n').replace('\n', ' '))
+
+    return data
 #################################################
 # Application Route
 #################################################
 # create route that renders index.html template
 @app.route("/")
 def home():
-    return render_template("index.html", datatable=json)
+    data = covid_stat_Scrapper()
+    return render_template("index.html", confirmed=data[0], deaths=data[1], recovered=data[2])
 
 @app.route("/custom")
 def county():
@@ -165,12 +179,13 @@ def countySearch():
     #Get input parameters from the webpage
     req = request.get_json()
 
+    #Get input parameters from the json
     fromdate = req.get("fromdate")
     todate = req.get("todate")
     county = req.get("county")
     state = req.get("state")
 
-    #build json file
+    #build return json file
     query = queryBuilder(fromdate, todate, county, state)
     jsonFile = buildJsonFile(query)
     res = make_response(jsonify(jsonFile), 200)
@@ -212,4 +227,4 @@ if __name__ == "__main__":
     import webbrowser
     webbrowser.open("http://127.0.0.1:5000/")
     setup_SQLitedb()
-    app.run(debug=True)
+    app.run()
